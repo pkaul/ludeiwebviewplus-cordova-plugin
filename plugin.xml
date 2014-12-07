@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<plugin xmlns="http://cordova.apache.org/ns/plugins/1.0"
+    id="webviewplus-cordova-plugin"
+    version="1.0.0">
+
+    <engines>
+        <engine name="cordova" version=">=3.0.0" />
+    </engines>
+
+    <name>Ludei's WebView+ integration for Android</name>
+
+    <platform name="android">
+
+        <!-- add original plugin as a dependency -->
+        <dependency id="com.ludei.webview.plus"/>
+
+        <!-- patch various files -->
+        <hook type="after_plugin_install" src="script/setup.js" />
+
+
+    </platform>
+
+</plugin>
