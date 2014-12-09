@@ -1,7 +1,55 @@
 module.exports = function(context) {
 
+    var fs = require('fs');
+    var path = require('path');
+    var exec = require('child_process').exec;
+
     var log = function(message) {
         console.info("[webview-cordova-plugin] "+message);
+    };
+
+    var androidHome = process.env.ANDROID_HOME;
+    if( !androidHome ) {
+        throw new Error("Environment variable ANDROID_HOME is not set to Android SDK directory");
+    }
+    else {
+        log("Found Android SDK at "+androidHome);
+    }
+
+    /**
+     * Executes an (external) command
+     */
+    var execCommand = function(command, callback) {
+
+        log("Executing "+command+" ...");
+        try {
+            var p = exec(command, {maxBuffer: 500 * 1024},function (error, stdout, stderr) {
+
+                if (!!stdout) {
+                    log("Exec: " + stdout);
+                }
+                if (!!stderr) {
+                    log("Exec: " + stderr);
+                }
+                if (!!error) {
+                    log("Error executing "+command+": "+error);
+                    throw new Error("Error executing "+command+": "+error);
+                }
+            });
+            p.on("close", function (code) {
+                if (code !== 0) {
+                    log("Error executing "+command+": "+code);
+                    throw new Error("Error executing " + command + ": " + code);
+                }
+                log("Executed " + command);
+                if (!!callback) {
+                    callback();
+                }
+            });
+        } catch (e) {
+            log("Error executing "+command+": "+code);
+            throw new Error("Error executing " + command + ": " + code);
+        }
     };
 
     /**
@@ -29,6 +77,27 @@ module.exports = function(context) {
         fs.writeFileSync(projectProperties, data+appends, "UTF-8", {'flags': 'w+'});
     };
 
+
+    /**
+     * Turns a project into an android "library project"
+     * @param path The location of the project
+     */
+    var prepareLibraryProject = function(path, callback) {
+
+        log("Preparing project library at "+path+" ...");
+        execCommand(androidHome+"/tools/android update lib-project -p "+path, function() {
+            execCommand("ant clean -f "+path+"/build.xml", function() {
+                execCommand("ant release -f "+path+"/build.xml", function() {
+
+                    console.info("Turned "+path+" into a library project");
+                    if(!!callback ) {
+                        callback();
+                    }
+                });
+            });
+        });
+    };
+
     var patchCordovaWebview = function() {
 
         var path = "./platforms/android/CordovaLib/src/org/apache/cordova/CordovaWebview.java";
@@ -37,17 +106,25 @@ module.exports = function(context) {
         fs.writeFileSync(path, data, "UTF-8", {'flags': 'w+'});
     };
 
-
-    var fs = require('fs');
-    var path = require('path');
-
     // see https://github.com/apache/cordova-lib/blob/master/cordova-lib/templates/hooks-README.md
     var Q = context.requireCordovaModule('q');
+    var deferral = new Q.defer();
 
-    patchCordovaWebview();
-    addLibraryReference("./platforms/android/CordovaLib", ["../../../plugins/com.ludei.webview.plus/android"]);
+    // turn webview+ into a library project
+    prepareLibraryProject("./plugins/com.ludei.webview.plus/android", function() {
 
-    return Q.resolve();
+        // add webview+ lib as dependency to cordova lib
+        addLibraryReference("./platforms/android/CordovaLib", ["../../../plugins/com.ludei.webview.plus/android"]);
+
+        // patch Cordova's Webview class
+        patchCordovaWebview();
+
+        // done
+        deferral.resolve();
+    });
+
+
+    return deferral.promise;
 };
 
 
